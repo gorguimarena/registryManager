@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion Dahira - Xassidas</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header avec navigation -->
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">🕌 Dahira Management</h1>
+            <nav class="nav" id="navigation">
+                <!-- Navigation dynamique selon le rôle -->
+            </nav>
+            <div class="user-info" id="userInfo">
+                <!-- Informations utilisateur connecté -->
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Vue de connexion -->
+            <section id="loginView" class="view active">
+                <div class="auth-container">
+                    <h2>🔐 Connexion</h2>
+                    <form id="loginForm" class="form">
+                        <div class="form-group">
+                            <label for="email">Email :</label>
+                            <input type="email" id="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Mot de passe :</label>
+                            <input type="password" id="password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Se connecter</button>
+                    </form>
+                    <div id="loginError" class="error"></div>
+                    <div class="auth-links">
+                      <p>Pas encore de compte ? <button class="link-btn" onclick="showView('registerView')">Créer un compte</button></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vue d'inscription -->
+            <section id="registerView" class="view">
+              <div class="auth-container">
+                <h2>📝 Créer un compte</h2>
+                <form id="registerForm" class="form">
+                  <div class="form-group">
+                    <label for="registerNom">Nom complet :</label>
+                    <input type="text" id="registerNom" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="registerEmail">Email :</label>
+                    <input type="email" id="registerEmail" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="registerPassword">Mot de passe :</label>
+                    <input type="password" id="registerPassword" required minlength="6">
+                  </div>
+                  <div class="form-group">
+                    <label for="registerDiwane">Diwane :</label>
+                    <select id="registerDiwane" required>
+                      <option value="">Sélectionner votre diwane</option>
+                      <!-- Options dynamiques -->
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Créer mon compte</button>
+                </form>
+                <div id="registerError" class="error"></div>
+                <div class="auth-links">
+                  <p>Déjà un compte ? <button class="link-btn" onclick="showView('loginView')">Se connecter</button></p>
+                </div>
+              </div>
+            </section>
+
+            <!-- Vue tableau de bord -->
+            <section id="dashboardView" class="view">
+                <h2>📊 Tableau de bord</h2>
+                <div class="dashboard-stats" id="dashboardStats">
+                    <!-- Statistiques dynamiques -->
+                </div>
+            </section>
+
+            <!-- Vue gestion des utilisateurs (Admin seulement) -->
+            <section id="usersView" class="view">
+                <div class="section-header">
+                    <h2>👥 Gestion des utilisateurs</h2>
+                    <button class="btn btn-primary" onclick="showAddUserForm()">➕ Ajouter un utilisateur</button>
+                </div>
+                
+                <!-- Formulaire d'ajout/modification d'utilisateur -->
+                <div id="userFormContainer" class="form-container" style="display: none;">
+                    <h3 id="userFormTitle">Ajouter un utilisateur</h3>
+                    <form id="userForm" class="form">
+                        <input type="hidden" id="userId">
+                        <div class="form-group">
+                            <label for="userName">Nom :</label>
+                            <input type="text" id="userName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="userEmail">Email :</label>
+                            <input type="email" id="userEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="userPassword">Mot de passe :</label>
+                            <input type="password" id="userPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="userRole">Rôle :</label>
+                            <select id="userRole" required>
+                                <option value="membre">Membre</option>
+                                <option value="gerant">Gérant</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="userDiwane">Diwane :</label>
+                            <select id="userDiwane" required>
+                                <!-- Options dynamiques -->
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideUserForm()">❌ Annuler</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Liste des utilisateurs -->
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Email</th>
+                                <th>Rôle</th>
+                                <th>Diwane</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <!-- Contenu dynamique -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Vue gestion des xassidas -->
+            <section id="xassidasView" class="view">
+                <div class="section-header">
+                    <h2>📖 Gestion des xassidas</h2>
+                    <button class="btn btn-primary" onclick="showAddXassidaForm()" id="addXassidaBtn">
+                      <!-- Texte dynamique selon le rôle -->
+                    </button>
+                </div>
+
+                <!-- Formulaire d'ajout de xassida -->
+                <div id="xassidaFormContainer" class="form-container" style="display: none;">
+                    <h3 id="xassidaFormTitle">Proposer un nouveau xassida</h3>
+                    <form id="xassidaForm" class="form">
+                        <div class="form-group">
+                            <label for="xassidaTitre">Titre :</label>
+                            <input type="text" id="xassidaTitre" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="xassidaAuteur">Auteur :</label>
+                            <input type="text" id="xassidaAuteur" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">💾 Proposer</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideXassidaForm()">❌ Annuler</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="xassidaRoleInfo" class="info-message" style="display: none;">
+                  <!-- Message dynamique selon le rôle -->
+                </div>
+
+                <!-- Liste des xassidas -->
+                <div class="xassidas-container">
+                    <div class="filter-tabs">
+                        <button class="tab-btn active" onclick="filterXassidas('all')">Tous</button>
+                        <button class="tab-btn" onclick="filterXassidas('valide')">Validés</button>
+                        <button class="tab-btn" onclick="filterXassidas('pending')" id="pendingTab">En attente</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Titre</th>
+                                    <th>Auteur</th>
+                                    <th>Statut</th>
+                                    <th>Proposé par</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="xassidasTableBody">
+                                <!-- Contenu dynamique -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vue gestion des événements -->
+            <section id="evenementsView" class="view">
+                <div class="section-header">
+                    <h2>📅 Gestion des événements</h2>
+                    <button class="btn btn-primary" onclick="showAddEvenementForm()">➕ Créer un événement</button>
+                </div>
+
+                <!-- Formulaire d'ajout d'événement -->
+                <div id="evenementFormContainer" class="form-container" style="display: none;">
+                    <h3>Créer un nouvel événement</h3>
+                    <form id="evenementForm" class="form">
+                        <div class="form-group">
+                            <label for="evenementNom">Nom de l'événement :</label>
+                            <input type="text" id="evenementNom" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="evenementDate">Date :</label>
+                            <input type="date" id="evenementDate" required>
+                        </div>
+                        <div class="form-group" id="evenementTypeGroup">
+                            <label for="evenementType">Type :</label>
+                            <select id="evenementType" required>
+                                <option value="local">Local (mon diwane)</option>
+                                <option value="global">Global (tous les diwanes)</option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">💾 Créer</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideEvenementForm()">❌ Annuler</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Liste des événements -->
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Statut</th>
+                                <th>Diwane</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="evenementsTableBody">
+                            <!-- Contenu dynamique -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Vue enregistrement des lectures -->
+            <section id="lecturesView" class="view">
+                <div class="section-header">
+                    <h2>📚 Enregistrer une lecture</h2>
+                </div>
+
+                <form id="lectureForm" class="form">
+                    <div class="form-group">
+                        <label for="lectureXassida">Xassida :</label>
+                        <select id="lectureXassida" required>
+                            <option value="">Sélectionner un xassida</option>
+                            <!-- Options dynamiques -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="lectureEvenement">Événement :</label>
+                        <select id="lectureEvenement" required>
+                            <option value="">Sélectionner un événement</option>
+                            <!-- Options dynamiques -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="lectureNombre">Nombre de lectures :</label>
+                        <input type="number" id="lectureNombre" min="1" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">💾 Enregistrer la lecture</button>
+                </form>
+
+                <!-- Historique des lectures de l'utilisateur -->
+                <div class="section-header">
+                    <h3>📋 Mes lectures</h3>
+                </div>
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Xassida</th>
+                                <th>Événement</th>
+                                <th>Nombre</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mesLecturesTableBody">
+                            <!-- Contenu dynamique -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Vue recensement (pour gérants) -->
+            <section id="recensementView" class="view">
+                <div class="section-header">
+                    <h2>📊 Recensement des lectures</h2>
+                    <div class="filter-group">
+                        <label for="filterEvenement">Filtrer par événement :</label>
+                        <select id="filterEvenement">
+                            <option value="">Tous les événements</option>
+                            <!-- Options dynamiques -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Membre</th>
+                                <th>Xassida</th>
+                                <th>Événement</th>
+                                <th>Nombre</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recensementTableBody">
+                            <!-- Contenu dynamique -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Vue profil -->
+            <section id="profilView" class="view">
+                <div class="section-header">
+                    <h2>👤 Mon profil</h2>
+                </div>
+
+                <form id="profilForm" class="form">
+                    <div class="form-group">
+                        <label for="profilNom">Nom :</label>
+                        <input type="text" id="profilNom" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="profilEmail">Email :</label>
+                        <input type="email" id="profilEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="profilPassword">Nouveau mot de passe (laisser vide pour ne pas changer) :</label>
+                        <input type="password" id="profilPassword">
+                    </div>
+                    <button type="submit" class="btn btn-primary">💾 Mettre à jour mon profil</button>
+                </form>
+            </section>
+        </div>
+    </main>
+
+    <!-- Messages de notification -->
+    <div id="notification" class="notification"></div>
+
+    <!-- Overlay de chargement -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-spinner"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
