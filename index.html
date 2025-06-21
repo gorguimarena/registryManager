@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion Dahira - Xassidas</title>
+    <title>Gestion Dahira - Xassidas (Optimisé)</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -130,7 +130,13 @@
                     </form>
                 </div>
 
-                <!-- Liste des utilisateurs -->
+                <!-- Liste des utilisateurs avec pagination -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <input type="text" id="userSearch" placeholder="Rechercher un utilisateur..." onkeyup="filterUsers()">
+                    </div>
+                    <div class="pagination-info" id="userPaginationInfo"></div>
+                </div>
                 <div class="table-container">
                     <table class="table">
                         <thead>
@@ -147,6 +153,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="pagination" id="userPagination"></div>
             </section>
 
             <!-- Vue gestion des xassidas -->

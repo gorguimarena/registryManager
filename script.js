@@ -1,28 +1,638 @@
 // Configuration de l'API
 const API_BASE_URL = "http://localhost:3000"
 
+// Cache système pour optimiser les performances
+const DataCache = {
+  data: new Map(),
+  timestamps: new Map(),
+  CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
+
+  set(key, value) {
+    this.data.set(key, value)
+    this.timestamps.set(key, Date.now())
+  },
+
+  get(key) {
+    const timestamp = this.timestamps.get(key)
+    if (!timestamp || Date.now() - timestamp > this.CACHE_DURATION) {
+      this.data.delete(key)
+      this.timestamps.delete(key)
+      return null
+    }
+    return this.data.get(key)
+  },
+
+  invalidate(key) {
+    this.data.delete(key)
+    this.timestamps.delete(key)
+  },
+
+  clear() {
+    this.data.clear()
+    this.timestamps.clear()
+  },
+}
+
+// Gestionnaire d'événements pour les mises à jour en temps réel
+const EventManager = {
+  listeners: new Map(),
+
+  // Écouter un type d'événement
+  on(eventType, callback) {
+    if (!this.listeners.has(eventType)) {
+      this.listeners.set(eventType, [])
+    }
+    this.listeners.get(eventType).push(callback)
+  },
+
+  // Déclencher un événement
+  emit(eventType, data) {
+    if (this.listeners.has(eventType)) {
+      this.listeners.get(eventType).forEach((callback) => {
+        try {
+          callback(data)
+        } catch (error) {
+          console.error(`Erreur dans le listener ${eventType}:`, error)
+        }
+      })
+    }
+  },
+
+  // Supprimer tous les listeners d'un type
+  off(eventType) {
+    this.listeners.delete(eventType)
+  },
+}
+
+// Gestionnaire d'état global pour la synchronisation
+const StateManager = {
+  state: {
+    users: [],
+    xassidas: [],
+    evenements: [],
+    lectures: [],
+    diwanes: [],
+  },
+
+  // Mettre à jour l'état et notifier les changements
+  updateState(dataType, newData) {
+    this.state[dataType] = newData
+    EventManager.emit(`${dataType}Updated`, newData)
+
+    // Mettre à jour le cache
+    DataCache.set(`/${dataType}`, newData)
+  },
+
+  // Ajouter un élément à l'état
+  addItem(dataType, item) {
+    this.state[dataType].push(item)
+    EventManager.emit(`${dataType}Added`, { item, allData: this.state[dataType] })
+
+    // Mettre à jour le cache
+    DataCache.set(`/${dataType}`, this.state[dataType])
+  },
+
+  // Mettre à jour un élément dans l'état
+  updateItem(dataType, itemId, updatedItem) {
+    const index = this.state[dataType].findIndex((item) => item.id === itemId)
+    if (index !== -1) {
+      this.state[dataType][index] = updatedItem
+      EventManager.emit(`${dataType}ItemUpdated`, {
+        item: updatedItem,
+        index,
+        allData: this.state[dataType],
+      })
+
+      // Mettre à jour le cache
+      DataCache.set(`/${dataType}`, this.state[dataType])
+    }
+  },
+
+  // Supprimer un élément de l'état
+  removeItem(dataType, itemId) {
+    const index = this.state[dataType].findIndex((item) => item.id === itemId)
+    if (index !== -1) {
+      const removedItem = this.state[dataType].splice(index, 1)[0]
+      EventManager.emit(`${dataType}ItemRemoved`, {
+        item: removedItem,
+        index,
+        allData: this.state[dataType],
+      })
+
+      // Mettre à jour le cache
+      DataCache.set(`/${dataType}`, this.state[dataType])
+    }
+  },
+
+  // Obtenir l'état actuel
+  getState(dataType) {
+    return this.state[dataType] || []
+  },
+}
+
+// Gestionnaire de mises à jour automatiques des vues
+const ViewUpdater = {
+  // Initialiser les listeners pour les mises à jour automatiques
+  init() {
+    // Listeners pour les xassidas
+    EventManager.on("xassidasItemUpdated", (data) => {
+      this.updateXassidaInViews(data.item)
+      this.updateDashboardStats()
+    })
+
+    EventManager.on("xassidasItemAdded", (data) => {
+      this.addXassidaToViews(data.item)
+      this.updateDashboardStats()
+    })
+
+    EventManager.on("xassidasItemRemoved", (data) => {
+      this.removeXassidaFromViews(data.item.id)
+      this.updateDashboardStats()
+    })
+
+    // Listeners pour les utilisateurs
+    EventManager.on("usersItemUpdated", (data) => {
+      this.updateUserInViews(data.item)
+      this.updateDashboardStats()
+    })
+
+    EventManager.on("usersItemAdded", (data) => {
+      this.addUserToViews(data.item)
+      this.updateDashboardStats()
+    })
+
+    EventManager.on("usersItemRemoved", (data) => {
+      this.removeUserFromViews(data.item.id)
+      this.updateDashboardStats()
+    })
+
+    // Listeners pour les événements
+    EventManager.on("evenementsItemUpdated", (data) => {
+      this.updateEvenementInViews(data.item)
+      this.refreshLectureForm()
+    })
+
+    EventManager.on("evenementsItemAdded", (data) => {
+      this.addEvenementToViews(data.item)
+      this.refreshLectureForm()
+    })
+
+    EventManager.on("evenementsItemRemoved", (data) => {
+      this.removeEvenementFromViews(data.item.id)
+      this.refreshLectureForm()
+    })
+
+    // Listeners pour les lectures
+    EventManager.on("lecturesItemAdded", (data) => {
+      this.addLectureToViews(data.item)
+      this.updateDashboardStats()
+      this.refreshRecensement()
+    })
+  },
+
+  // Mise à jour d'un xassida dans toutes les vues
+  updateXassidaInViews(xassida) {
+    // Mettre à jour dans la liste des xassidas
+    const xassidaRow = document.querySelector(`tr[data-xassida-id="${xassida.id}"]`)
+    if (xassidaRow) {
+      this.updateXassidaRow(xassidaRow, xassida)
+    }
+
+    // Mettre à jour dans les selects de lecture
+    this.updateXassidaInSelects(xassida)
+
+    // Mettre à jour les données globales
+    if (window.allXassidas) {
+      const index = window.allXassidas.findIndex((x) => x.id === xassida.id)
+      if (index !== -1) {
+        window.allXassidas[index] = xassida
+      }
+    }
+  },
+
+  // Mise à jour d'une ligne de xassida
+  updateXassidaRow(row, xassida) {
+    const statusCell = row.querySelector(".status-badge")
+    if (statusCell) {
+      statusCell.className = `status-badge ${xassida.valide ? "status-valide" : "status-pending"}`
+      statusCell.textContent = xassida.valide ? "✅ Validé" : "⏳ En attente"
+    }
+
+    // Mettre à jour les boutons d'action
+    const actionsCell = row.querySelector("td:last-child")
+    if (actionsCell) {
+      const canValidate = (currentUser.role === "gerant" || currentUser.role === "admin") && !xassida.valide
+
+      if (canValidate) {
+        actionsCell.innerHTML = `
+          <button id="validate-btn-${xassida.id}" class="btn btn-success btn-small" onclick="validateXassida(${xassida.id})">✅ Valider</button>
+          <button id="reject-btn-${xassida.id}" class="btn btn-danger btn-small" onclick="rejectXassida(${xassida.id})">❌ Rejeter</button>
+        `
+      } else if (xassida.valide && (currentUser.role === "admin" || currentUser.role === "gerant")) {
+        actionsCell.innerHTML = `
+          <button class="btn btn-warning btn-small" onclick="editXassida(${xassida.id})">✏️ Modifier</button>
+          <button class="btn btn-danger btn-small" onclick="deleteXassida(${xassida.id})">🗑️ Supprimer</button>
+        `
+      }
+    }
+
+    // Animation de mise à jour
+    this.animateRowUpdate(row)
+  },
+
+  // Ajouter un xassida aux vues
+  addXassidaToViews(xassida) {
+    // Si on est sur la vue xassidas, ajouter à la liste
+    if (currentView === "xassidasView") {
+      const tbody = document.getElementById("xassidasTableBody")
+      if (tbody && window.allXassidas) {
+        window.allXassidas.push(xassida)
+        // Recharger l'affichage avec le filtre actuel
+        const activeTab = document.querySelector(".tab-btn.active")
+        if (activeTab) {
+          const filter = activeTab.textContent.includes("Validés")
+            ? "valide"
+            : activeTab.textContent.includes("En attente")
+              ? "pending"
+              : "all"
+          this.refreshXassidasDisplay(filter)
+        }
+      }
+    }
+
+    // Mettre à jour les selects de lecture si le xassida est validé
+    if (xassida.valide) {
+      this.addXassidaToSelects(xassida)
+    }
+  },
+
+  // Supprimer un xassida des vues
+  removeXassidaFromViews(xassidaId) {
+    // Supprimer la ligne du tableau
+    const row = document.querySelector(`tr[data-xassida-id="${xassidaId}"]`)
+    if (row) {
+      row.style.opacity = "0"
+      row.style.transform = "translateX(-100%)"
+      setTimeout(() => row.remove(), 300)
+    }
+
+    // Supprimer des selects
+    this.removeXassidaFromSelects(xassidaId)
+
+    // Mettre à jour les données globales
+    if (window.allXassidas) {
+      window.allXassidas = window.allXassidas.filter((x) => x.id !== xassidaId)
+    }
+  },
+
+  // Mise à jour d'un utilisateur dans toutes les vues
+  updateUserInViews(user) {
+    // Mettre à jour dans la liste des utilisateurs
+    if (currentView === "usersView") {
+      this.refreshUsersDisplay()
+    }
+
+    // Mettre à jour les informations de l'utilisateur connecté si c'est lui
+    if (currentUser && currentUser.id === user.id) {
+      currentUser = user
+      localStorage.setItem("currentUser", JSON.stringify(currentUser))
+      updateNavigation()
+    }
+  },
+
+  // Ajouter un utilisateur aux vues
+  addUserToViews(user) {
+    if (currentView === "usersView" && allUsers) {
+      allUsers.push(user)
+      this.refreshUsersDisplay()
+    }
+  },
+
+  // Supprimer un utilisateur des vues
+  removeUserFromViews(userId) {
+    if (currentView === "usersView" && allUsers) {
+      allUsers = allUsers.filter((u) => u.id !== userId)
+      this.refreshUsersDisplay()
+    }
+  },
+
+  // Mise à jour d'un événement dans toutes les vues
+  updateEvenementInViews(evenement) {
+    if (currentView === "evenementsView") {
+      loadEvenements()
+    }
+  },
+
+  // Ajouter un événement aux vues
+  addEvenementToViews(evenement) {
+    if (currentView === "evenementsView") {
+      loadEvenements()
+    }
+  },
+
+  // Supprimer un événement des vues
+  removeEvenementFromViews(evenementId) {
+    if (currentView === "evenementsView") {
+      loadEvenements()
+    }
+  },
+
+  // Ajouter une lecture aux vues
+  addLectureToViews(lecture) {
+    if (currentView === "lecturesView") {
+      loadMesLectures()
+    }
+  },
+
+  // Mettre à jour les statistiques du dashboard
+  updateDashboardStats() {
+    if (currentView === "dashboardView") {
+      loadDashboard()
+    }
+  },
+
+  // Actualiser l'affichage des xassidas
+  refreshXassidasDisplay(filter = "all") {
+    if (window.allXassidas) {
+      let filteredXassidas = window.allXassidas
+
+      switch (filter) {
+        case "valide":
+          filteredXassidas = filteredXassidas.filter((x) => x.valide)
+          break
+        case "pending":
+          filteredXassidas = filteredXassidas.filter((x) => !x.valide)
+          break
+      }
+
+      displayXassidas(filteredXassidas)
+    }
+  },
+
+  // Actualiser l'affichage des utilisateurs
+  refreshUsersDisplay() {
+    if (filteredUsers && filteredUsers.length > 0) {
+      renderUsersPage(1)
+    }
+  },
+
+  // Actualiser le formulaire de lecture
+  refreshLectureForm() {
+    if (currentView === "lecturesView") {
+      loadLectureForm()
+    }
+  },
+
+  // Actualiser le recensement
+  refreshRecensement() {
+    if (currentView === "recensementView") {
+      loadRecensement()
+    }
+  },
+
+  // Mettre à jour les xassidas dans les selects
+  updateXassidaInSelects(xassida) {
+    const lectureXassidaSelect = document.getElementById("lectureXassida")
+    if (lectureXassidaSelect && xassida.valide) {
+      // Vérifier si l'option existe déjà
+      const existingOption = lectureXassidaSelect.querySelector(`option[value="${xassida.id}"]`)
+      if (existingOption) {
+        existingOption.textContent = `${xassida.titre} - ${xassida.auteur}`
+      } else {
+        // Ajouter la nouvelle option
+        const option = document.createElement("option")
+        option.value = xassida.id
+        option.textContent = `${xassida.titre} - ${xassida.auteur}`
+        lectureXassidaSelect.appendChild(option)
+      }
+    }
+  },
+
+  // Ajouter un xassida aux selects
+  addXassidaToSelects(xassida) {
+    const lectureXassidaSelect = document.getElementById("lectureXassida")
+    if (lectureXassidaSelect) {
+      const option = document.createElement("option")
+      option.value = xassida.id
+      option.textContent = `${xassida.titre} - ${xassida.auteur}`
+      lectureXassidaSelect.appendChild(option)
+    }
+  },
+
+  // Supprimer un xassida des selects
+  removeXassidaFromSelects(xassidaId) {
+    const lectureXassidaSelect = document.getElementById("lectureXassida")
+    if (lectureXassidaSelect) {
+      const option = lectureXassidaSelect.querySelector(`option[value="${xassidaId}"]`)
+      if (option) {
+        option.remove()
+      }
+    }
+  },
+
+  // Animation de mise à jour de ligne
+  animateRowUpdate(rowElement) {
+    rowElement.classList.add("row-updated")
+    setTimeout(() => {
+      rowElement.classList.add("fade-out")
+      setTimeout(() => {
+        rowElement.classList.remove("row-updated", "fade-out")
+      }, 500)
+    }, 1000)
+  },
+}
+
+// Gestionnaire de requêtes optimisé avec mise à jour d'état
+const ApiManager = {
+  pendingRequests: new Map(),
+
+  async fetch(endpoint, options = {}) {
+    const cacheKey = `${endpoint}_${JSON.stringify(options)}`
+
+    // Vérifier le cache d'abord
+    const cached = DataCache.get(cacheKey)
+    if (cached && options.method !== "POST" && options.method !== "PUT" && options.method !== "DELETE") {
+      return cached
+    }
+
+    // Éviter les requêtes en double
+    if (this.pendingRequests.has(cacheKey)) {
+      return this.pendingRequests.get(cacheKey)
+    }
+
+    const requestPromise = fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json()
+      })
+      .then((data) => {
+        // Mettre en cache les données GET
+        if (!options.method || options.method === "GET") {
+          DataCache.set(cacheKey, data)
+        }
+        return data
+      })
+      .finally(() => {
+        this.pendingRequests.delete(cacheKey)
+      })
+
+    this.pendingRequests.set(cacheKey, requestPromise)
+    return requestPromise
+  },
+
+  async batchFetch(endpoints) {
+    const promises = endpoints.map((endpoint) => this.fetch(endpoint))
+    return Promise.all(promises)
+  },
+
+  // Méthodes avec mise à jour automatique de l'état
+  async create(dataType, item) {
+    const result = await this.fetch(`/${dataType}`, {
+      method: "POST",
+      body: JSON.stringify(item),
+    })
+
+    // Mettre à jour l'état global
+    StateManager.addItem(dataType, result)
+
+    return result
+  },
+
+  async update(dataType, itemId, item) {
+    const result = await this.fetch(`/${dataType}/${itemId}`, {
+      method: "PUT",
+      body: JSON.stringify(item),
+    })
+
+    // Mettre à jour l'état global
+    StateManager.updateItem(dataType, itemId, result)
+
+    return result
+  },
+
+  async delete(dataType, itemId) {
+    await this.fetch(`/${dataType}/${itemId}`, {
+      method: "DELETE",
+    })
+
+    // Mettre à jour l'état global
+    StateManager.removeItem(dataType, itemId)
+  },
+
+  // Charger et synchroniser les données initiales
+  async loadAndSyncData(dataType) {
+    const data = await this.fetch(`/${dataType}`)
+    StateManager.updateState(dataType, data)
+    return data
+  },
+}
+
 // État global de l'application
 let currentUser = null
 let currentView = "login"
+const viewData = new Map() // Cache des données par vue
+
+// Pagination
+const PaginationManager = {
+  pageSize: 10,
+  currentPages: new Map(),
+
+  paginate(data, page = 1, pageSize = this.pageSize) {
+    const startIndex = (page - 1) * pageSize
+    const endIndex = startIndex + pageSize
+    return {
+      data: data.slice(startIndex, endIndex),
+      currentPage: page,
+      totalPages: Math.ceil(data.length / pageSize),
+      totalItems: data.length,
+      hasNext: endIndex < data.length,
+      hasPrev: page > 1,
+    }
+  },
+
+  renderPagination(containerId, paginationData, onPageChange) {
+    const container = document.getElementById(containerId)
+    if (!container || paginationData.totalPages <= 1) {
+      container.innerHTML = ""
+      return
+    }
+
+    let html = '<div class="pagination-controls">'
+
+    if (paginationData.hasPrev) {
+      html += `<button class="btn btn-secondary btn-small" onclick="${onPageChange}(${paginationData.currentPage - 1})">← Précédent</button>`
+    }
+
+    // Pages
+    const startPage = Math.max(1, paginationData.currentPage - 2)
+    const endPage = Math.min(paginationData.totalPages, paginationData.currentPage + 2)
+
+    for (let i = startPage; i <= endPage; i++) {
+      const isActive = i === paginationData.currentPage
+      html += `<button class="btn ${isActive ? "btn-primary" : "btn-secondary"} btn-small" 
+               onclick="${onPageChange}(${i})">${i}</button>`
+    }
+
+    if (paginationData.hasNext) {
+      html += `<button class="btn btn-secondary btn-small" onclick="${onPageChange}(${paginationData.currentPage + 1})">Suivant →</button>`
+    }
+
+    html += "</div>"
+    container.innerHTML = html
+  },
+}
 
 // Initialisation de l'application
 document.addEventListener("DOMContentLoaded", () => {
   initializeApp()
 })
 
-// Initialisation
-function initializeApp() {
-  // Vérifier si un utilisateur est connecté
-  const savedUser = localStorage.getItem("currentUser")
-  if (savedUser) {
-    currentUser = JSON.parse(savedUser)
-    showDashboard()
-  } else {
-    showView("loginView")
-  }
+// Initialisation optimisée
+async function initializeApp() {
+  try {
+    // Initialiser le système de mise à jour des vues
+    ViewUpdater.init()
 
-  // Attacher les événements
-  attachEventListeners()
+    // Vérifier si un utilisateur est connecté
+    const savedUser = localStorage.getItem("currentUser")
+    if (savedUser) {
+      currentUser = JSON.parse(savedUser)
+
+      // Pré-charger les données essentielles en arrière-plan
+      preloadEssentialData()
+
+      showDashboard()
+    } else {
+      showView("loginView")
+    }
+
+    // Attacher les événements
+    attachEventListeners()
+  } catch (error) {
+    console.error("Erreur initialisation:", error)
+    showNotification("Erreur lors de l'initialisation", "error")
+  }
+}
+
+// Pré-chargement des données essentielles avec synchronisation
+async function preloadEssentialData() {
+  try {
+    // Charger les données de base en parallèle et synchroniser l'état
+    const promises = [
+      ApiManager.loadAndSyncData("users"),
+      ApiManager.loadAndSyncData("diwanes"),
+      ApiManager.loadAndSyncData("xassidas"),
+      ApiManager.loadAndSyncData("evenements"),
+      ApiManager.loadAndSyncData("lectures"),
+    ]
+
+    await Promise.allSettled(promises)
+  } catch (error) {
+    console.error("Erreur pré-chargement:", error)
+  }
 }
 
 // Attacher les événements
@@ -44,21 +654,27 @@ function attachEventListeners() {
   document.getElementById("filterEvenement").addEventListener("change", loadRecensement)
 }
 
-// Gestion de la connexion
+// Gestion de la connexion optimisée
 async function handleLogin(e) {
   e.preventDefault()
 
   const email = document.getElementById("email").value
   const password = document.getElementById("password").value
   const errorDiv = document.getElementById("loginError")
+  const submitBtn = e.target.querySelector('button[type="submit"]')
 
   try {
-    const response = await fetch(`${API_BASE_URL}/users?email=${email}&password=${password}`)
-    const users = await response.json()
+    showLoading(submitBtn.id)
+
+    const users = await ApiManager.fetch(`/users?email=${email}&password=${password}`)
 
     if (users.length > 0) {
       currentUser = users[0]
       localStorage.setItem("currentUser", JSON.stringify(currentUser))
+
+      // Pré-charger les données après connexion
+      preloadEssentialData()
+
       showDashboard()
       showNotification("Connexion réussie !", "success")
     } else {
@@ -67,10 +683,12 @@ async function handleLogin(e) {
   } catch (error) {
     errorDiv.textContent = "Erreur de connexion"
     console.error("Erreur de connexion:", error)
+  } finally {
+    hideLoading(submitBtn.id)
   }
 }
 
-// Gestion de l'inscription
+// Gestion de l'inscription optimisée
 async function handleRegister(e) {
   e.preventDefault()
 
@@ -79,10 +697,13 @@ async function handleRegister(e) {
   const password = document.getElementById("registerPassword").value
   const diwaneId = Number.parseInt(document.getElementById("registerDiwane").value)
   const errorDiv = document.getElementById("registerError")
+  const submitBtn = e.target.querySelector('button[type="submit"]')
 
   try {
+    showLoading(submitBtn.id)
+
     // Vérifier si l'email existe déjà
-    const existingUsers = await fetch(`${API_BASE_URL}/users?email=${email}`).then((r) => r.json())
+    const existingUsers = await ApiManager.fetch(`/users?email=${email}`)
 
     if (existingUsers.length > 0) {
       errorDiv.textContent = "Cet email est déjà utilisé"
@@ -98,22 +719,16 @@ async function handleRegister(e) {
       role: "membre",
     }
 
-    const response = await fetch(`${API_BASE_URL}/users`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(userData),
-    })
+    await ApiManager.create("users", userData)
 
-    if (response.ok) {
-      showNotification("Compte créé avec succès ! Vous pouvez maintenant vous connecter.", "success")
-      showView("loginView")
-      document.getElementById("registerForm").reset()
-    } else {
-      errorDiv.textContent = "Erreur lors de la création du compte"
-    }
+    showNotification("Compte créé avec succès ! Vous pouvez maintenant vous connecter.", "success")
+    showView("loginView")
+    document.getElementById("registerForm").reset()
   } catch (error) {
-    errorDiv.textContent = "Erreur de connexion"
+    errorDiv.textContent = "Erreur lors de la création du compte"
     console.error("Erreur inscription:", error)
+  } finally {
+    hideLoading(submitBtn.id)
   }
 }
 
@@ -121,11 +736,23 @@ async function handleRegister(e) {
 function logout() {
   currentUser = null
   localStorage.removeItem("currentUser")
+  DataCache.clear()
+  viewData.clear()
+
+  // Nettoyer l'état global
+  StateManager.state = {
+    users: [],
+    xassidas: [],
+    evenements: [],
+    lectures: [],
+    diwanes: [],
+  }
+
   showView("loginView")
   showNotification("Déconnexion réussie", "success")
 }
 
-// Affichage des vues
+// Affichage des vues optimisé
 function showView(viewId) {
   // Masquer toutes les vues
   document.querySelectorAll(".view").forEach((view) => {
@@ -139,7 +766,7 @@ function showView(viewId) {
   // Mettre à jour la navigation
   updateNavigation()
 
-  // Charger les données spécifiques à la vue
+  // Charger les données spécifiques à la vue (avec cache)
   loadViewData(viewId)
 }
 
@@ -184,48 +811,79 @@ function updateNavigation() {
     `
 }
 
-// Chargement des données par vue
+// Chargement des données par vue optimisé
 async function loadViewData(viewId) {
-  switch (viewId) {
-    case "dashboardView":
-      await loadDashboard()
-      break
-    case "usersView":
-      await loadUsers()
-      await loadDiwanes()
-      break
-    case "xassidasView":
-      await loadXassidas()
-      break
-    case "evenementsView":
-      await loadEvenements()
-      break
-    case "lecturesView":
-      await loadLectureForm()
-      await loadMesLectures()
-      break
-    case "recensementView":
-      await loadRecensementFilters()
-      await loadRecensement()
-      break
-    case "profilView":
-      loadProfil()
-      break
-    case "registerView":
-      await loadDiwanesForRegister()
-      break
+  // Vérifier si les données sont déjà en cache
+  if (viewData.has(viewId) && Date.now() - viewData.get(viewId).timestamp < 60000) {
+    return // Données récentes, pas besoin de recharger
+  }
+
+  try {
+    showLoading()
+
+    switch (viewId) {
+      case "dashboardView":
+        await loadDashboard()
+        break
+      case "usersView":
+        await loadUsers()
+        break
+      case "xassidasView":
+        await loadXassidas()
+        break
+      case "evenementsView":
+        await loadEvenements()
+        break
+      case "lecturesView":
+        await loadLectureForm()
+        await loadMesLectures()
+        break
+      case "recensementView":
+        await loadRecensementFilters()
+        await loadRecensement()
+        break
+      case "profilView":
+        loadProfil()
+        break
+      case "registerView":
+        await loadDiwanesForRegister()
+        break
+    }
+
+    // Marquer les données comme chargées
+    viewData.set(viewId, { timestamp: Date.now() })
+  } catch (error) {
+    console.error(`Erreur chargement vue ${viewId}:`, error)
+    showNotification("Erreur lors du chargement des données", "error")
+  } finally {
+    hideLoading()
   }
 }
 
-// Tableau de bord
+// Tableau de bord optimisé avec données synchronisées
 async function loadDashboard() {
   try {
-    const [users, xassidas, evenements, lectures] = await Promise.all([
-      fetch(`${API_BASE_URL}/users`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/xassidas`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/evenements`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/lectures`).then((r) => r.json()),
-    ])
+    // Utiliser les données de l'état global si disponibles
+    let users = StateManager.getState("users")
+    let xassidas = StateManager.getState("xassidas")
+    let evenements = StateManager.getState("evenements")
+    let lectures = StateManager.getState("lectures")
+
+    // Si pas de données dans l'état, les charger
+    if (users.length === 0 || xassidas.length === 0) {
+      ;[users, xassidas, evenements, lectures] = await ApiManager.batchFetch([
+        "/users",
+        "/xassidas",
+        "/evenements",
+        "/lectures",
+      ])
+
+      // Synchroniser l'état
+      StateManager.updateState("users", users)
+      StateManager.updateState("xassidas", xassidas)
+      StateManager.updateState("evenements", evenements)
+      StateManager.updateState("lectures", lectures)
+    }
 
     const stats = document.getElementById("dashboardStats")
 
@@ -252,7 +910,7 @@ async function loadDashboard() {
     if (currentUser.role === "gerant" || currentUser.role === "admin") {
       const diwaneLectures = lectures.filter((l) => {
         const user = users.find((u) => u.id === l.userId)
-        return currentUser.role === "admin" || user?.diwaneId === currentUser.diwaneId
+        return currentUser.role === "admin" || (user && user.diwaneId === currentUser.diwaneId)
       })
 
       statsHtml += `
@@ -277,19 +935,42 @@ async function loadDashboard() {
   }
 }
 
-// Gestion des utilisateurs
-async function loadUsers() {
-  try {
-    const [users, diwanes] = await Promise.all([
-      fetch(`${API_BASE_URL}/users`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/diwanes`).then((r) => r.json()),
-    ])
+// Gestion des utilisateurs avec pagination et synchronisation
+let allUsers = []
+let filteredUsers = []
 
-    const tbody = document.getElementById("usersTableBody")
-    tbody.innerHTML = users
-      .map((user) => {
-        const diwane = diwanes.find((d) => d.id === user.diwaneId)
-        return `
+async function loadUsers(page = 1) {
+  try {
+    // Utiliser les données synchronisées si disponibles
+    let users = StateManager.getState("users")
+    let diwanes = StateManager.getState("diwanes")
+
+    if (users.length === 0) {
+      ;[users, diwanes] = await ApiManager.batchFetch(["/users", "/diwanes"])
+      StateManager.updateState("users", users)
+      StateManager.updateState("diwanes", diwanes)
+    }
+
+    allUsers = users
+    filteredUsers = users
+
+    renderUsersPage(page)
+    await loadDiwanes()
+  } catch (error) {
+    console.error("Erreur chargement utilisateurs:", error)
+  }
+}
+
+function renderUsersPage(page = 1) {
+  const paginationData = PaginationManager.paginate(filteredUsers, page)
+  const tbody = document.getElementById("usersTableBody")
+  const diwanes = StateManager.getState("diwanes")
+
+  // Afficher les utilisateurs de la page courante
+  tbody.innerHTML = paginationData.data
+    .map((user) => {
+      const diwane = diwanes.find((d) => d.id === user.diwaneId)
+      return `
                 <tr>
                     <td>${user.nom}</td>
                     <td>${user.email}</td>
@@ -301,16 +982,33 @@ async function loadUsers() {
                     </td>
                 </tr>
             `
-      })
-      .join("")
-  } catch (error) {
-    console.error("Erreur chargement utilisateurs:", error)
-  }
+    })
+    .join("")
+
+  // Afficher les informations de pagination
+  const paginationInfo = document.getElementById("userPaginationInfo")
+  paginationInfo.innerHTML = `Affichage ${(paginationData.currentPage - 1) * PaginationManager.pageSize + 1}-${Math.min(paginationData.currentPage * PaginationManager.pageSize, paginationData.totalItems)} sur ${paginationData.totalItems} utilisateurs`
+
+  // Afficher les contrôles de pagination
+  PaginationManager.renderPagination("userPagination", paginationData, "loadUsers")
+}
+
+function filterUsers() {
+  const searchTerm = document.getElementById("userSearch").value.toLowerCase()
+  filteredUsers = allUsers.filter(
+    (user) => user.nom.toLowerCase().includes(searchTerm) || user.email.toLowerCase().includes(searchTerm),
+  )
+  renderUsersPage(1)
 }
 
 async function loadDiwanes() {
   try {
-    const diwanes = await fetch(`${API_BASE_URL}/diwanes`).then((r) => r.json())
+    let diwanes = StateManager.getState("diwanes")
+
+    if (diwanes.length === 0) {
+      diwanes = await ApiManager.loadAndSyncData("diwanes")
+    }
+
     const select = document.getElementById("userDiwane")
     select.innerHTML = diwanes.map((d) => `<option value="${d.id}">${d.nom}</option>`).join("")
   } catch (error) {
@@ -321,7 +1019,12 @@ async function loadDiwanes() {
 // Charger les diwanes pour l'inscription
 async function loadDiwanesForRegister() {
   try {
-    const diwanes = await fetch(`${API_BASE_URL}/diwanes`).then((r) => r.json())
+    let diwanes = StateManager.getState("diwanes")
+
+    if (diwanes.length === 0) {
+      diwanes = await ApiManager.loadAndSyncData("diwanes")
+    }
+
     const select = document.getElementById("registerDiwane")
     select.innerHTML =
       '<option value="">Sélectionner votre diwane</option>' +
@@ -344,7 +1047,7 @@ function hideUserForm() {
 
 async function editUser(userId) {
   try {
-    const user = await fetch(`${API_BASE_URL}/users/${userId}`).then((r) => r.json())
+    const user = await ApiManager.fetch(`/users/${userId}`)
 
     document.getElementById("userId").value = user.id
     document.getElementById("userName").value = user.nom
@@ -364,9 +1067,8 @@ async function deleteUser(userId) {
   if (!confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ?")) return
 
   try {
-    await fetch(`${API_BASE_URL}/users/${userId}`, { method: "DELETE" })
+    await ApiManager.delete("users", userId)
     showNotification("Utilisateur supprimé avec succès", "success")
-    loadUsers()
   } catch (error) {
     showNotification("Erreur lors de la suppression", "error")
     console.error("Erreur suppression utilisateur:", error)
@@ -385,40 +1087,42 @@ async function handleUserSubmit(e) {
     diwaneId: Number.parseInt(document.getElementById("userDiwane").value),
   }
 
+  const submitBtn = e.target.querySelector('button[type="submit"]')
+
   try {
+    showLoading(submitBtn.id)
+
     if (userId) {
-      // Modification
-      await fetch(`${API_BASE_URL}/users/${userId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...userData, id: Number.parseInt(userId) }),
-      })
+      // Modification avec mise à jour automatique
+      await ApiManager.update("users", Number.parseInt(userId), { ...userData, id: Number.parseInt(userId) })
       showNotification("Utilisateur modifié avec succès", "success")
     } else {
-      // Création
-      await fetch(`${API_BASE_URL}/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userData),
-      })
+      // Création avec mise à jour automatique
+      await ApiManager.create("users", userData)
       showNotification("Utilisateur créé avec succès", "success")
     }
 
     hideUserForm()
-    loadUsers()
   } catch (error) {
     showNotification("Erreur lors de l'enregistrement", "error")
     console.error("Erreur sauvegarde utilisateur:", error)
+  } finally {
+    hideLoading(submitBtn.id)
   }
 }
 
-// Gestion des xassidas
+// Gestion des xassidas optimisée avec synchronisation
 async function loadXassidas() {
   try {
-    const [xassidas, users] = await Promise.all([
-      fetch(`${API_BASE_URL}/xassidas`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/users`).then((r) => r.json()),
-    ])
+    // Utiliser les données synchronisées si disponibles
+    let xassidas = StateManager.getState("xassidas")
+    let users = StateManager.getState("users")
+
+    if (xassidas.length === 0 || users.length === 0) {
+      ;[xassidas, users] = await ApiManager.batchFetch(["/xassidas", "/users"])
+      StateManager.updateState("xassidas", xassidas)
+      StateManager.updateState("users", users)
+    }
 
     window.allXassidas = xassidas
     window.allUsers = users
@@ -485,72 +1189,22 @@ function filterXassidas(filter) {
   displayXassidas(filteredXassidas)
 }
 
-// Fonctions utilitaires pour le chargement
-function showLoading(elementId = null) {
-  if (elementId) {
-    const element = document.getElementById(elementId)
-    if (element) {
-      element.classList.add("loading")
-      element.disabled = true
-    }
-  } else {
-    document.getElementById("loadingOverlay").classList.add("show")
-  }
-}
-
-function hideLoading(elementId = null) {
-  if (elementId) {
-    const element = document.getElementById(elementId)
-    if (element) {
-      element.classList.remove("loading")
-      element.disabled = false
-    }
-  } else {
-    document.getElementById("loadingOverlay").classList.remove("show")
-  }
-}
-
-// Fonction pour animer la mise à jour d'une ligne
-function animateRowUpdate(rowElement) {
-  rowElement.classList.add("row-updated")
-  setTimeout(() => {
-    rowElement.classList.add("fade-out")
-    setTimeout(() => {
-      rowElement.classList.remove("row-updated", "fade-out")
-    }, 500)
-  }, 1000)
-}
-
-// Validation de xassida optimisée
+// Validation de xassida optimisée avec mise à jour automatique
 async function validateXassida(xassidaId) {
   const buttonId = `validate-btn-${xassidaId}`
 
   try {
     showLoading(buttonId)
 
-    const xassida = await fetch(`${API_BASE_URL}/xassidas/${xassidaId}`).then((r) => r.json())
+    const xassida = await ApiManager.fetch(`/xassidas/${xassidaId}`)
+    const updatedXassida = { ...xassida, valide: true }
 
-    await fetch(`${API_BASE_URL}/xassidas/${xassidaId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...xassida, valide: true }),
-    })
-
-    // Mise à jour optimisée : juste mettre à jour la ligne concernée
-    updateXassidaRow(xassidaId, { ...xassida, valide: true })
+    // Utiliser la méthode de mise à jour automatique
+    await ApiManager.update("xassidas", xassidaId, updatedXassida)
 
     showNotification("Xassida validé avec succès", "success")
 
-    // Recharger seulement si on est sur l'onglet "En attente"
-    const activeTab = document.querySelector(".tab-btn.active")
-    if (activeTab && activeTab.textContent.includes("En attente")) {
-      // Retirer la ligne de l'affichage actuel
-      const row = document.querySelector(`tr[data-xassida-id="${xassidaId}"]`)
-      if (row) {
-        row.style.opacity = "0"
-        setTimeout(() => row.remove(), 300)
-      }
-    }
+    // La mise à jour des vues se fait automatiquement via les événements
   } catch (error) {
     showNotification("Erreur lors de la validation", "error")
     console.error("Erreur validation xassida:", error)
@@ -559,30 +1213,7 @@ async function validateXassida(xassidaId) {
   }
 }
 
-// Fonction pour mettre à jour une ligne de xassida
-function updateXassidaRow(xassidaId, updatedXassida) {
-  const row = document.querySelector(`tr[data-xassida-id="${xassidaId}"]`)
-  if (row) {
-    const statusCell = row.querySelector(".status-badge")
-    if (statusCell) {
-      statusCell.className = "status-badge status-valide"
-      statusCell.textContent = "✅ Validé"
-    }
-
-    // Animer la mise à jour
-    animateRowUpdate(row)
-
-    // Mettre à jour les données globales
-    if (window.allXassidas) {
-      const index = window.allXassidas.findIndex((x) => x.id === xassidaId)
-      if (index !== -1) {
-        window.allXassidas[index] = updatedXassida
-      }
-    }
-  }
-}
-
-// Rejet de xassida optimisé
+// Rejet de xassida optimisé avec mise à jour automatique
 async function rejectXassida(xassidaId) {
   if (!confirm("Êtes-vous sûr de vouloir rejeter ce xassida ?")) return
 
@@ -591,22 +1222,12 @@ async function rejectXassida(xassidaId) {
   try {
     showLoading(buttonId)
 
-    await fetch(`${API_BASE_URL}/xassidas/${xassidaId}`, { method: "DELETE" })
-
-    // Retirer la ligne avec animation
-    const row = document.querySelector(`tr[data-xassida-id="${xassidaId}"]`)
-    if (row) {
-      row.style.opacity = "0"
-      row.style.transform = "translateX(-100%)"
-      setTimeout(() => row.remove(), 300)
-    }
-
-    // Mettre à jour les données globales
-    if (window.allXassidas) {
-      window.allXassidas = window.allXassidas.filter((x) => x.id !== xassidaId)
-    }
+    // Utiliser la méthode de suppression automatique
+    await ApiManager.delete("xassidas", xassidaId)
 
     showNotification("Xassida rejeté", "warning")
+
+    // La mise à jour des vues se fait automatiquement via les événements
   } catch (error) {
     showNotification("Erreur lors du rejet", "error")
     console.error("Erreur rejet xassida:", error)
@@ -620,7 +1241,7 @@ function displayXassidas(xassidas) {
   const tbody = document.getElementById("xassidasTableBody")
   tbody.innerHTML = xassidas
     .map((xassida) => {
-      const createdBy = window.allUsers?.find((u) => u.id === xassida.createdBy)
+      const createdBy = (window.allUsers || []).find((u) => u.id === xassida.createdBy)
       const canValidate = (currentUser.role === "gerant" || currentUser.role === "admin") && !xassida.valide
 
       // Déterminer le type de création
@@ -664,59 +1285,6 @@ function displayXassidas(xassidas) {
     .join("")
 }
 
-// Modifier un xassida (admin/gérant seulement)
-async function editXassida(xassidaId) {
-  try {
-    const xassida = await fetch(`${API_BASE_URL}/xassidas/${xassidaId}`).then((r) => r.json())
-
-    // Pré-remplir le formulaire
-    document.getElementById("xassidaTitre").value = xassida.titre
-    document.getElementById("xassidaAuteur").value = xassida.auteur
-
-    // Modifier le formulaire pour la modification
-    const formTitle = document.getElementById("xassidaFormTitle")
-    const submitBtn = document.querySelector("#xassidaForm button[type='submit']")
-
-    formTitle.textContent = "Modifier le xassida"
-    submitBtn.innerHTML = "💾 Modifier"
-
-    // Stocker l'ID pour la modification
-    document.getElementById("xassidaForm").dataset.editId = xassidaId
-
-    document.getElementById("xassidaFormContainer").style.display = "block"
-  } catch (error) {
-    showNotification("Erreur lors du chargement du xassida", "error")
-    console.error("Erreur chargement xassida:", error)
-  }
-}
-
-// Supprimer un xassida (admin/gérant seulement)
-async function deleteXassida(xassidaId) {
-  if (!confirm("Êtes-vous sûr de vouloir supprimer ce xassida ? Cette action est irréversible.")) return
-
-  try {
-    await fetch(`${API_BASE_URL}/xassidas/${xassidaId}`, { method: "DELETE" })
-
-    // Retirer la ligne avec animation
-    const row = document.querySelector(`tr[data-xassida-id="${xassidaId}"]`)
-    if (row) {
-      row.style.opacity = "0"
-      row.style.transform = "translateX(-100%)"
-      setTimeout(() => row.remove(), 300)
-    }
-
-    // Mettre à jour les données globales
-    if (window.allXassidas) {
-      window.allXassidas = window.allXassidas.filter((x) => x.id !== xassidaId)
-    }
-
-    showNotification("Xassida supprimé avec succès", "success")
-  } catch (error) {
-    showNotification("Erreur lors de la suppression", "error")
-    console.error("Erreur suppression xassida:", error)
-  }
-}
-
 function showAddXassidaForm() {
   const formTitle = document.getElementById("xassidaFormTitle")
   const submitBtn = document.querySelector("#xassidaForm button[type='submit']")
@@ -735,7 +1303,7 @@ function showAddXassidaForm() {
 function hideXassidaForm() {
   const form = document.getElementById("xassidaForm")
   form.reset()
-  delete form.dataset.editId // Nettoyer l'ID d'édition
+  delete form.dataset.editId
   document.getElementById("xassidaFormContainer").style.display = "none"
 }
 
@@ -749,56 +1317,39 @@ async function handleXassidaSubmit(e) {
     showLoading(submitBtn.id || "xassida-submit-btn")
 
     if (editId) {
-      // Mode modification
+      // Mode modification avec mise à jour automatique
       const xassidaData = {
         id: Number.parseInt(editId),
         titre: document.getElementById("xassidaTitre").value,
         auteur: document.getElementById("xassidaAuteur").value,
-        valide: true, // Les modifications par admin/gérant restent validées
+        valide: true,
         createdBy: currentUser.id,
       }
 
-      const response = await fetch(`${API_BASE_URL}/xassidas/${editId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(xassidaData),
-      })
+      await ApiManager.update("xassidas", Number.parseInt(editId), xassidaData)
 
-      if (response.ok) {
-        showNotification("Xassida modifié avec succès", "success")
-        delete e.target.dataset.editId // Nettoyer l'ID d'édition
-        hideXassidaForm()
-        loadXassidas()
-      }
+      showNotification("Xassida modifié avec succès", "success")
+      delete e.target.dataset.editId
+      hideXassidaForm()
     } else {
-      // Mode création
-      // Déterminer si le xassida est directement validé selon le rôle
+      // Mode création avec mise à jour automatique
       const isDirectlyValid = currentUser.role === "admin" || currentUser.role === "gerant"
 
       const xassidaData = {
         titre: document.getElementById("xassidaTitre").value,
         auteur: document.getElementById("xassidaAuteur").value,
-        valide: isDirectlyValid, // Validé directement pour admin/gérant
+        valide: isDirectlyValid,
         createdBy: currentUser.id,
       }
 
-      const response = await fetch(`${API_BASE_URL}/xassidas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(xassidaData),
-      })
+      await ApiManager.create("xassidas", xassidaData)
 
-      if (response.ok) {
-        const successMessage = isDirectlyValid
-          ? "Xassida créé et disponible pour la lecture !"
-          : "Xassida proposé avec succès, en attente de validation"
+      const successMessage = isDirectlyValid
+        ? "Xassida créé et disponible pour la lecture !"
+        : "Xassida proposé avec succès, en attente de validation"
 
-        showNotification(successMessage, "success")
-        hideXassidaForm()
-        loadXassidas()
-      } else {
-        throw new Error("Erreur lors de l'enregistrement")
-      }
+      showNotification(successMessage, "success")
+      hideXassidaForm()
     }
   } catch (error) {
     const errorMessage =
@@ -813,15 +1364,18 @@ async function handleXassidaSubmit(e) {
   }
 }
 
-// Chargement du formulaire de lecture avec vérifications
+// Chargement du formulaire de lecture avec vérifications optimisé
 async function loadLectureForm() {
   try {
     showLoading()
 
-    const [xassidas, evenements] = await Promise.all([
-      fetch(`${API_BASE_URL}/xassidas?valide=true`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/evenements`).then((r) => r.json()),
-    ])
+    // Utiliser les données synchronisées
+    let xassidas = StateManager.getState("xassidas").filter((x) => x.valide)
+    let evenements = StateManager.getState("evenements")
+
+    if (xassidas.length === 0 || evenements.length === 0) {
+      ;[xassidas, evenements] = await ApiManager.batchFetch(["/xassidas?valide=true", "/evenements"])
+    }
 
     // Filtrer les événements selon le diwane ET le statut actif
     const filteredEvenements = evenements.filter(
@@ -835,7 +1389,6 @@ async function loadLectureForm() {
 
     // Vérifier s'il y a des données disponibles
     if (xassidas.length === 0 && filteredEvenements.length === 0) {
-      // Aucune donnée disponible
       lectureForm.style.display = "none"
       const existingMessage = lectureSection.querySelector(".info-message")
       if (existingMessage) existingMessage.remove()
@@ -849,7 +1402,6 @@ async function loadLectureForm() {
       `
       lectureSection.insertBefore(infoMessage, lectureForm)
     } else if (xassidas.length === 0) {
-      // Pas de xassidas validés
       lectureForm.style.display = "none"
       const existingMessage = lectureSection.querySelector(".info-message")
       if (existingMessage) existingMessage.remove()
@@ -863,7 +1415,6 @@ async function loadLectureForm() {
       `
       lectureSection.insertBefore(infoMessage, lectureForm)
     } else if (filteredEvenements.length === 0) {
-      // Pas d'événements actifs
       lectureForm.style.display = "none"
       const existingMessage = lectureSection.querySelector(".info-message")
       if (existingMessage) existingMessage.remove()
@@ -877,7 +1428,6 @@ async function loadLectureForm() {
       `
       lectureSection.insertBefore(infoMessage, lectureForm)
     } else {
-      // Tout est disponible, afficher le formulaire
       lectureForm.style.display = "block"
       const existingMessage = lectureSection.querySelector(".info-message")
       if (existingMessage) existingMessage.remove()
@@ -919,12 +1469,13 @@ async function handleProfilSubmit(e) {
     profilData.password = newPassword
   }
 
+  const submitBtn = e.target.querySelector('button[type="submit"]')
+
   try {
-    await fetch(`${API_BASE_URL}/users/${currentUser.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profilData),
-    })
+    showLoading(submitBtn.id)
+
+    // Utiliser la méthode de mise à jour automatique
+    await ApiManager.update("users", currentUser.id, profilData)
 
     // Mettre à jour l'utilisateur local
     currentUser = profilData
@@ -935,45 +1486,23 @@ async function handleProfilSubmit(e) {
   } catch (error) {
     showNotification("Erreur lors de la mise à jour", "error")
     console.error("Erreur mise à jour profil:", error)
+  } finally {
+    hideLoading(submitBtn.id)
   }
 }
 
-// Fonctions utilitaires
-function showNotification(message, type = "success") {
-  const notification = document.getElementById("notification")
-  notification.textContent = message
-  notification.className = `notification ${type} show`
-
-  setTimeout(() => {
-    notification.classList.remove("show")
-  }, 3000)
-}
-
-function showDashboard() {
-  showView("dashboardView")
-}
-
-// Gestion des erreurs globales
-window.addEventListener("error", (e) => {
-  console.error("Erreur globale:", e.error)
-  showNotification("Une erreur est survenue", "error")
-})
-
-// Gestion des erreurs de fetch
-window.addEventListener("unhandledrejection", (e) => {
-  console.error("Promesse rejetée:", e.reason)
-  showNotification("Erreur de connexion au serveur", "error")
-})
-
-// Remplacer les fonctions manquantes par les implémentations complètes :
-
-// Gestion des événements
+// Gestion des événements optimisée avec synchronisation
 async function loadEvenements() {
   try {
-    const [evenements, diwanes] = await Promise.all([
-      fetch(`${API_BASE_URL}/evenements`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/diwanes`).then((r) => r.json()),
-    ])
+    // Utiliser les données synchronisées
+    let evenements = StateManager.getState("evenements")
+    let diwanes = StateManager.getState("diwanes")
+
+    if (evenements.length === 0 || diwanes.length === 0) {
+      ;[evenements, diwanes] = await ApiManager.batchFetch(["/evenements", "/diwanes"])
+      StateManager.updateState("evenements", evenements)
+      StateManager.updateState("diwanes", diwanes)
+    }
 
     // Filtrer selon le rôle
     let filteredEvenements = evenements
@@ -1014,11 +1543,8 @@ async function loadEvenements() {
                   <span class="slider"></span>
                 </label>
                 <button class="btn btn-danger btn-small" onclick="deleteEvenement(${evenement.id})">🗑️ Supprimer</button>
-                <button class="btn btn-primary btn-small" onclick="generateEvenementReport(${evenement.id})">📊 Rapport</button>
               `
-                  : `
-                <button class="btn btn-primary btn-small" onclick="generateEvenementReport(${evenement.id})">📊 Rapport</button>
-              `
+                  : ""
               }
             </td>
           </tr>
@@ -1045,19 +1571,16 @@ async function loadEvenements() {
   }
 }
 
-// Basculer le statut d'un événement
+// Basculer le statut d'un événement avec mise à jour automatique
 async function toggleEvenementStatus(evenementId, currentStatus) {
   try {
-    const evenement = await fetch(`${API_BASE_URL}/evenements/${evenementId}`).then((r) => r.json())
+    const evenement = await ApiManager.fetch(`/evenements/${evenementId}`)
+    const updatedEvenement = { ...evenement, status: currentStatus ? "inactive" : "active" }
 
-    await fetch(`${API_BASE_URL}/evenements/${evenementId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...evenement, status: currentStatus ? "inactive" : "active" }),
-    })
+    // Utiliser la méthode de mise à jour automatique
+    await ApiManager.update("evenements", evenementId, updatedEvenement)
 
     showNotification(`Événement ${currentStatus ? "désactivé" : "activé"} avec succès`, "success")
-    loadEvenements()
   } catch (error) {
     showNotification("Erreur lors de la modification du statut", "error")
     console.error("Erreur toggle statut:", error)
@@ -1077,23 +1600,16 @@ async function handleEvenementSubmit(e) {
       nom: document.getElementById("evenementNom").value,
       date: document.getElementById("evenementDate").value,
       type: type,
-      status: "active", // Statut actif par défaut
+      status: "active",
       diwaneId: type === "global" ? null : currentUser.diwaneId,
     }
 
-    const response = await fetch(`${API_BASE_URL}/evenements`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(evenementData),
-    })
+    // Utiliser la méthode de création automatique
+    await ApiManager.create("evenements", evenementData)
 
-    if (response.ok) {
-      showNotification("Événement créé avec succès", "success")
-      document.getElementById("evenementForm").reset()
-      loadEvenements()
-    } else {
-      throw new Error("Erreur lors de la création")
-    }
+    showNotification("Événement créé avec succès", "success")
+    document.getElementById("evenementForm").reset()
+    hideEvenementForm()
   } catch (error) {
     showNotification("Erreur lors de la création", "error")
     console.error("Erreur création événement:", error)
@@ -1106,19 +1622,31 @@ async function deleteEvenement(evenementId) {
   if (!confirm("Êtes-vous sûr de vouloir supprimer cet événement ?")) return
 
   try {
-    await fetch(`${API_BASE_URL}/evenements/${evenementId}`, { method: "DELETE" })
+    // Utiliser la méthode de suppression automatique
+    await ApiManager.delete("evenements", evenementId)
     showNotification("Événement supprimé avec succès", "success")
-    loadEvenements()
   } catch (error) {
     showNotification("Erreur lors de la suppression", "error")
     console.error("Erreur suppression événement:", error)
   }
 }
 
-// Recensement
+function showAddEvenementForm() {
+  document.getElementById("evenementFormContainer").style.display = "block"
+}
+
+function hideEvenementForm() {
+  document.getElementById("evenementFormContainer").style.display = "none"
+}
+
+// Recensement optimisé avec synchronisation
 async function loadRecensementFilters() {
   try {
-    const evenements = await fetch(`${API_BASE_URL}/evenements`).then((r) => r.json())
+    let evenements = StateManager.getState("evenements")
+
+    if (evenements.length === 0) {
+      evenements = await ApiManager.loadAndSyncData("evenements")
+    }
 
     // Filtrer selon le rôle
     let filteredEvenements = evenements
@@ -1139,12 +1667,25 @@ async function loadRecensement() {
   try {
     showLoading()
 
-    const [lectures, users, xassidas, evenements] = await Promise.all([
-      fetch(`${API_BASE_URL}/lectures`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/users`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/xassidas`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/evenements`).then((r) => r.json()),
-    ])
+    // Utiliser les données synchronisées
+    let lectures = StateManager.getState("lectures")
+    let users = StateManager.getState("users")
+    let xassidas = StateManager.getState("xassidas")
+    let evenements = StateManager.getState("evenements")
+
+    if (lectures.length === 0 || users.length === 0) {
+      ;[lectures, users, xassidas, evenements] = await ApiManager.batchFetch([
+        "/lectures",
+        "/users",
+        "/xassidas",
+        "/evenements",
+      ])
+
+      StateManager.updateState("lectures", lectures)
+      StateManager.updateState("users", users)
+      StateManager.updateState("xassidas", xassidas)
+      StateManager.updateState("evenements", evenements)
+    }
 
     // Filtrer les lectures selon le rôle et le filtre d'événement
     let filteredLectures = lectures
@@ -1189,17 +1730,26 @@ async function loadRecensement() {
   }
 }
 
-// Gestion des lectures
+// Gestion des lectures optimisée avec synchronisation
 async function loadMesLectures() {
   try {
-    const [lectures, xassidas, evenements] = await Promise.all([
-      fetch(`${API_BASE_URL}/lectures?userId=${currentUser.id}`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/xassidas`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/evenements`).then((r) => r.json()),
-    ])
+    // Utiliser les données synchronisées
+    let lectures = StateManager.getState("lectures")
+    let xassidas = StateManager.getState("xassidas")
+    let evenements = StateManager.getState("evenements")
+
+    if (lectures.length === 0) {
+      ;[lectures, xassidas, evenements] = await ApiManager.batchFetch(["/lectures", "/xassidas", "/evenements"])
+      StateManager.updateState("lectures", lectures)
+      StateManager.updateState("xassidas", xassidas)
+      StateManager.updateState("evenements", evenements)
+    }
+
+    // Filtrer les lectures de l'utilisateur actuel
+    const mesLectures = lectures.filter((l) => l.userId === currentUser.id)
 
     const tbody = document.getElementById("mesLecturesTableBody")
-    tbody.innerHTML = lectures
+    tbody.innerHTML = mesLectures
       .map((lecture) => {
         const xassida = xassidas.find((x) => x.id === lecture.xassidaId)
         const evenement = evenements.find((e) => e.id === lecture.evenementId)
@@ -1234,19 +1784,11 @@ async function handleLectureSubmit(e) {
       nombre: Number.parseInt(document.getElementById("lectureNombre").value),
     }
 
-    const response = await fetch(`${API_BASE_URL}/lectures`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lectureData),
-    })
+    // Utiliser la méthode de création automatique
+    await ApiManager.create("lectures", lectureData)
 
-    if (response.ok) {
-      showNotification("Lecture enregistrée avec succès", "success")
-      document.getElementById("lectureForm").reset()
-      loadMesLectures()
-    } else {
-      throw new Error("Erreur lors de l'enregistrement")
-    }
+    showNotification("Lecture enregistrée avec succès", "success")
+    document.getElementById("lectureForm").reset()
   } catch (error) {
     showNotification("Erreur lors de l'enregistrement", "error")
     console.error("Erreur enregistrement lecture:", error)
@@ -1255,264 +1797,89 @@ async function handleLectureSubmit(e) {
   }
 }
 
-// Nouvelle fonctionnalité : Génération de rapport d'événement
-async function generateEvenementReport(evenementId) {
+// Fonctions utilitaires optimisées
+function showLoading(elementId = null) {
+  if (elementId) {
+    const element = document.getElementById(elementId)
+    if (element) {
+      element.classList.add("loading")
+      element.disabled = true
+    }
+  } else {
+    document.getElementById("loadingOverlay").classList.add("show")
+  }
+}
+
+function hideLoading(elementId = null) {
+  if (elementId) {
+    const element = document.getElementById(elementId)
+    if (element) {
+      element.classList.remove("loading")
+      element.disabled = false
+    }
+  } else {
+    document.getElementById("loadingOverlay").classList.remove("show")
+  }
+}
+
+// Fonctions utilitaires
+function showNotification(message, type = "success") {
+  const notification = document.getElementById("notification")
+  notification.textContent = message
+  notification.className = `notification ${type} show`
+
+  setTimeout(() => {
+    notification.classList.remove("show")
+  }, 3000)
+}
+
+function showDashboard() {
+  showView("dashboardView")
+}
+
+// Gestion des erreurs globales
+window.addEventListener("error", (e) => {
+  console.error("Erreur globale:", e.error)
+  showNotification("Une erreur est survenue", "error")
+})
+
+// Gestion des erreurs de fetch
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("Promesse rejetée:", e.reason)
+  showNotification("Erreur de connexion au serveur", "error")
+})
+
+// Fonctions manquantes pour la compatibilité
+async function editXassida(xassidaId) {
   try {
-    showLoading()
+    const xassida = await ApiManager.fetch(`/xassidas/${xassidaId}`)
 
-    const [lectures, users, xassidas, evenements] = await Promise.all([
-      fetch(`${API_BASE_URL}/lectures?evenementId=${evenementId}`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/users`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/xassidas`).then((r) => r.json()),
-      fetch(`${API_BASE_URL}/evenements/${evenementId}`).then((r) => r.json()),
-    ])
+    document.getElementById("xassidaTitre").value = xassida.titre
+    document.getElementById("xassidaAuteur").value = xassida.auteur
 
-    // Filtrer les lectures selon le rôle
-    let filteredLectures = lectures
-    if (currentUser.role === "gerant") {
-      filteredLectures = lectures.filter((l) => {
-        const user = users.find((u) => u.id === l.userId)
-        return user && user.diwaneId === currentUser.diwaneId
-      })
-    }
+    const formTitle = document.getElementById("xassidaFormTitle")
+    const submitBtn = document.querySelector("#xassidaForm button[type='submit']")
 
-    // Générer les statistiques
-    const stats = generateEventStats(filteredLectures, users, xassidas, evenements)
+    formTitle.textContent = "Modifier le xassida"
+    submitBtn.innerHTML = "💾 Modifier"
 
-    // Afficher le rapport dans une modal
-    showEventReportModal(stats)
+    document.getElementById("xassidaForm").dataset.editId = xassidaId
+    document.getElementById("xassidaFormContainer").style.display = "block"
   } catch (error) {
-    console.error("Erreur génération rapport:", error)
-    showNotification("Erreur lors de la génération du rapport", "error")
-  } finally {
-    hideLoading()
+    showNotification("Erreur lors du chargement du xassida", "error")
+    console.error("Erreur chargement xassida:", error)
   }
 }
 
-// Générer les statistiques d'un événement
-function generateEventStats(lectures, users, xassidas, evenement) {
-  const stats = {
-    evenement: evenement,
-    totalLectures: lectures.reduce((sum, l) => sum + l.nombre, 0),
-    totalParticipants: new Set(lectures.map((l) => l.userId)).size,
-    xassidasStats: {},
-    participantsStats: {},
-    topXassidas: [],
-    topParticipants: [],
+async function deleteXassida(xassidaId) {
+  if (!confirm("Êtes-vous sûr de vouloir supprimer ce xassida ? Cette action est irréversible.")) return
+
+  try {
+    // Utiliser la méthode de suppression automatique
+    await ApiManager.delete("xassidas", xassidaId)
+    showNotification("Xassida supprimé avec succès", "success")
+  } catch (error) {
+    showNotification("Erreur lors de la suppression", "error")
+    console.error("Erreur suppression xassida:", error)
   }
-
-  // Statistiques par xassida
-  lectures.forEach((lecture) => {
-    const xassida = xassidas.find((x) => x.id === lecture.xassidaId)
-    if (xassida) {
-      const key = `${xassida.titre} - ${xassida.auteur}`
-      if (!stats.xassidasStats[key]) {
-        stats.xassidasStats[key] = { total: 0, participants: new Set() }
-      }
-      stats.xassidasStats[key].total += lecture.nombre
-      stats.xassidasStats[key].participants.add(lecture.userId)
-    }
-  })
-
-  // Statistiques par participant
-  lectures.forEach((lecture) => {
-    const user = users.find((u) => u.id === lecture.userId)
-    if (user) {
-      if (!stats.participantsStats[user.nom]) {
-        stats.participantsStats[user.nom] = { total: 0, xassidas: new Set() }
-      }
-      stats.participantsStats[user.nom].total += lecture.nombre
-      stats.participantsStats[user.nom].xassidas.add(lecture.xassidaId)
-    }
-  })
-
-  // Top 5 xassidas
-  stats.topXassidas = Object.entries(stats.xassidasStats)
-    .map(([nom, data]) => ({ nom, total: data.total, participants: data.participants.size }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5)
-
-  // Top 5 participants
-  stats.topParticipants = Object.entries(stats.participantsStats)
-    .map(([nom, data]) => ({ nom, total: data.total, xassidas: data.xassidas.size }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5)
-
-  return stats
-}
-
-// Afficher le rapport dans une modal
-function showEventReportModal(stats) {
-  // Créer la modal si elle n'existe pas
-  let modal = document.getElementById("eventReportModal")
-  if (!modal) {
-    modal = document.createElement("div")
-    modal.id = "eventReportModal"
-    modal.className = "modal"
-    modal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="modalTitle">📊 Rapport d'événement</h2>
-          <span class="close" onclick="closeEventReportModal()">&times;</span>
-        </div>
-        <div class="modal-body" id="modalBody">
-          <!-- Contenu dynamique -->
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" onclick="exportEventReport()">📄 Exporter</button>
-          <button class="btn btn-secondary" onclick="closeEventReportModal()">Fermer</button>
-        </div>
-      </div>
-    `
-    document.body.appendChild(modal)
-  }
-
-  // Remplir le contenu
-  document.getElementById("modalTitle").textContent = `📊 Rapport - ${stats.evenement.nom}`
-  document.getElementById("modalBody").innerHTML = `
-    <div class="report-section">
-      <h3>📈 Statistiques générales</h3>
-      <div class="stats-grid">
-        <div class="stat-item">
-          <span class="stat-label">Total lectures :</span>
-          <span class="stat-value">${stats.totalLectures}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Participants :</span>
-          <span class="stat-value">${stats.totalParticipants}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Date événement :</span>
-          <span class="stat-value">${new Date(stats.evenement.date).toLocaleDateString("fr-FR")}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Type :</span>
-          <span class="stat-value">${stats.evenement.type === "global" ? "🌍 Global" : "🏠 Local"}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="report-section">
-      <h3>🏆 Top 5 Xassidas les plus lus</h3>
-      <div class="top-list">
-        ${stats.topXassidas
-          .map(
-            (item, index) => `
-          <div class="top-item">
-            <span class="rank">${index + 1}</span>
-            <span class="name">${item.nom}</span>
-            <span class="count">${item.total} lectures</span>
-            <span class="participants">${item.participants} participants</span>
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-    </div>
-
-    <div class="report-section">
-      <h3>👥 Top 5 Participants</h3>
-      <div class="top-list">
-        ${stats.topParticipants
-          .map(
-            (item, index) => `
-          <div class="top-item">
-            <span class="rank">${index + 1}</span>
-            <span class="name">${item.nom}</span>
-            <span class="count">${item.total} lectures</span>
-            <span class="participants">${item.xassidas} xassidas différents</span>
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-    </div>
-
-    <div class="report-section">
-      <h3>📋 Détail par Xassida</h3>
-      <div class="detail-table">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Xassida</th>
-              <th>Total lectures</th>
-              <th>Participants</th>
-              <th>Moyenne par participant</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${Object.entries(stats.xassidasStats)
-              .map(
-                ([nom, data]) => `
-              <tr>
-                <td>${nom}</td>
-                <td>${data.total}</td>
-                <td>${data.participants.size}</td>
-                <td>${(data.total / data.participants.size).toFixed(1)}</td>
-              </tr>
-            `,
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `
-
-  // Stocker les stats pour l'export
-  window.currentReportStats = stats
-
-  // Afficher la modal
-  modal.style.display = "block"
-}
-
-// Fermer la modal de rapport
-function closeEventReportModal() {
-  const modal = document.getElementById("eventReportModal")
-  if (modal) {
-    modal.style.display = "none"
-  }
-}
-
-// Exporter le rapport (simple version texte)
-function exportEventReport() {
-  if (!window.currentReportStats) return
-
-  const stats = window.currentReportStats
-  let reportText = `RAPPORT D'ÉVÉNEMENT - ${stats.evenement.nom}\n`
-  reportText += `Date: ${new Date(stats.evenement.date).toLocaleDateString("fr-FR")}\n`
-  reportText += `Type: ${stats.evenement.type === "global" ? "Global" : "Local"}\n`
-  reportText += `Généré le: ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}\n\n`
-
-  reportText += `STATISTIQUES GÉNÉRALES\n`
-  reportText += `- Total lectures: ${stats.totalLectures}\n`
-  reportText += `- Participants: ${stats.totalParticipants}\n\n`
-
-  reportText += `TOP 5 XASSIDAS\n`
-  stats.topXassidas.forEach((item, index) => {
-    reportText += `${index + 1}. ${item.nom} - ${item.total} lectures (${item.participants} participants)\n`
-  })
-
-  reportText += `\nTOP 5 PARTICIPANTS\n`
-  stats.topParticipants.forEach((item, index) => {
-    reportText += `${index + 1}. ${item.nom} - ${item.total} lectures (${item.xassidas} xassidas différents)\n`
-  })
-
-  // Créer et télécharger le fichier
-  const blob = new Blob([reportText], { type: "text/plain;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = `rapport-${stats.evenement.nom.replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.txt`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-
-  showNotification("Rapport exporté avec succès", "success")
-}
-
-// Fonction pour masquer le formulaire d'événement
-function hideEvenementForm() {
-  document.getElementById("evenementFormContainer").style.display = "none"
 }
