@@ -1,5 +1,9 @@
 // Configuration de l'API
-const API_BASE_URL = "http://localhost:3000";
+const isLocal = location.hostname === "localhost";
+const API_BASE_URL = isLocal
+  ? "http://localhost:3000"
+  : "https://serverdata-7k3i.onrender.com";
+
 
 // Système de mise à jour en temps réel amélioré
 const RealtimeUpdater = {
