@@ -1,5 +1,5 @@
-export // Gestionnaire d'événements pour les mises à jour en temps réel
-const EventManager = {
+// Gestionnaire d'événements pour les mises à jour en temps réel
+export const EventManager = {
   listeners: new Map(),
 
   // Écouter un type d'événement

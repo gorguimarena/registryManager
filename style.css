@@ -390,6 +390,27 @@ body {
   min-width: 200px;
 }
 
+/* Resume container pour les résumés PDF */
+.resume-container {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 2px solid #eee;
+}
+
+.resume-container .section-header {
+  margin-bottom: 1rem;
+}
+
+.resume-container .table-container {
+  background: #f8f9fa;
+  border: 2px solid #3498db;
+}
+
+.resume-container .table th {
+  background: #3498db;
+  color: white;
+}
+
 /* Notifications */
 .notification {
   position: fixed;

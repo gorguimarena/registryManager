@@ -4,5 +4,9 @@
   "private": true,
   "scripts": {
     "build": "echo 'no build step'"
+  },
+  "dependencies": {
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.5.31"
   }
 }

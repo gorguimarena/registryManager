@@ -322,10 +322,13 @@
                     <h2>📊 Recensement des lectures</h2>
                     <div class="filter-group">
                         <label for="filterEvenement">Filtrer par événement :</label>
-                        <select id="filterEvenement">
-                            <option value="">Tous les événements</option>
+                        <select id="filterEvenement" onchange="filterRecensementByEvent()">
+                            <option value="">Tous les événements actifs</option>
                             <!-- Options dynamiques -->
                         </select>
+                        <button class="btn btn-success" onclick="generatePDFReport()" id="generatePDFBtn" style="display: none;">
+                            📄 Générer PDF
+                        </button>
                     </div>
                 </div>
 
@@ -344,6 +347,28 @@
                             <!-- Contenu dynamique -->
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Résumé par xassida pour l'événement sélectionné -->
+                <div id="resumeXassidas" class="resume-container" style="display: none;">
+                    <div class="section-header">
+                        <h3>📈 Résumé par xassida</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Xassida</th>
+                                    <th>Auteur</th>
+                                    <th>Total lectures</th>
+                                    <th>Nombre de lecteurs</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resumeXassidasTableBody">
+                                <!-- Contenu dynamique -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
@@ -380,6 +405,11 @@
       <div class="loading-spinner"></div>
     </div>
 
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="dataCache.js"></script>
+    <script src="evenManager.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
