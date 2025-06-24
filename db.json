@@ -1,0 +1,143 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "nom": "Administrateur Principal",
+      "email": "admin@dahira.com",
+      "password": "admin123",
+      "role": "admin",
+      "diwane": "1",
+      "dateCreation": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "nom": "Ali Diop",
+      "email": "ali@dahira.com",
+      "password": "gerant123",
+      "role": "gerant",
+      "diwane": "1",
+      "dateCreation": "2024-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "nom": "Fatou Sall",
+      "email": "fatou@dahira.com",
+      "password": "membre123",
+      "role": "membre",
+      "diwane": "1",
+      "dateCreation": "2024-01-03T00:00:00.000Z"
+    },
+    {
+      "id": "4",
+      "nom": "Moussa Ba",
+      "email": "moussa@dahira.com",
+      "password": "gerant123",
+      "role": "gerant",
+      "diwane": "2",
+      "dateCreation": "2024-01-04T00:00:00.000Z"
+    }
+  ],
+  "diwanes": [
+    {
+      "id": "1",
+      "nom": "Diwane Fass",
+      "description": "Diwane principal de Fass",
+      "dateCreation": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "nom": "Diwane Medina",
+      "description": "Diwane de Medina",
+      "dateCreation": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "nom": "Diwane Plateau",
+      "description": "Diwane du Plateau",
+      "dateCreation": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "xassidas": [
+    {
+      "id": "1",
+      "titre": "Burdah",
+      "auteur": "Imam Al-Busiri",
+      "statut": "valide",
+      "proposePar": "1",
+      "dateProposition": "2024-01-01T00:00:00.000Z",
+      "dateValidation": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "titre": "Jawharat al-Kamal",
+      "auteur": "Ahmad ibn Idris",
+      "statut": "valide",
+      "proposePar": "2",
+      "dateProposition": "2024-01-02T00:00:00.000Z",
+      "dateValidation": "2024-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "titre": "Salat al-Fatih",
+      "auteur": "Sidi Muhammad al-Bakri",
+      "statut": "pending",
+      "proposePar": "3",
+      "dateProposition": "2024-01-03T00:00:00.000Z"
+    }
+  ],
+  "evenements": [
+    {
+      "id": "1",
+      "nom": "Mawlid 2024",
+      "date": "2024-12-25",
+      "type": "global",
+      "creePar": "1",
+      "diwane": null,
+      "dateCreation": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "nom": "Réunion mensuelle Fass",
+      "date": "2024-12-15",
+      "type": "local",
+      "creePar": "2",
+      "diwane": "1",
+      "dateCreation": "2024-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "nom": "Ziarra annuelle",
+      "date": "2024-12-30",
+      "type": "global",
+      "creePar": "1",
+      "diwane": null,
+      "dateCreation": "2024-01-03T00:00:00.000Z"
+    }
+  ],
+  "lectures": [
+    {
+      "id": "1",
+      "userId": "3",
+      "xassidaId": "1",
+      "evenementId": "1",
+      "nombre": 100,
+      "date": "2024-01-10T00:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "userId": "3",
+      "xassidaId": "2",
+      "evenementId": "2",
+      "nombre": 50,
+      "date": "2024-01-11T00:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "userId": "2",
+      "xassidaId": "1",
+      "evenementId": "1",
+      "nombre": 200,
+      "date": "2024-01-12T00:00:00.000Z"
+    }
+  ]
+}
